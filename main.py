@@ -50,7 +50,10 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Demo de la clase: usa solo Gemini, sin fallbacks (no necesita Groq).",
     )
+    parser.add_argument("--temperature", type=float, help="Temperatura del modelo, entre 0 y 2.")
     args = parser.parse_args(argv)
+    if args.temperature is not None and (args.temperature < 0 or args.temperature > 2):
+        parser.error("--temperature debe estar entre 0 y 2.")
     if args.prompt is None and not args.demo:
         parser.error("falta el texto a enviar (o usa --demo).")
     return args
@@ -94,6 +97,8 @@ def main(argv: list[str] | None = None) -> int:
         {"role": "user", "content": args.prompt or demo_prompt()},
     ]
     params: dict = {}
+    if args.temperature is not None:
+        params["temperature"] = args.temperature
 
     try:
         response = client.generate(messages, **params)

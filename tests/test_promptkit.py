@@ -44,16 +44,17 @@ def kit() -> PromptKit:
     return PromptKit(PROMPTS_ROOT)
 
 
-def test_loads_v1_and_v2(kit):
-    assert kit.versions("ticket_classifier") == [1, 2]
+def test_loads_v1_and_v2_v3(kit):
+    assert kit.versions("ticket_classifier") == [1, 2, 3]
     v1 = kit.get("ticket_classifier", 1)
     v2 = kit.get("ticket_classifier", 2)
-    assert (v1.version, v2.version) == (1, 2)
-    assert v2.model_params == {"temperature": 0, "max_tokens": 10}
+    v3 = kit.get("ticket_classifier", 3)
+    assert (v1.version, v2.version, v3.version) == (1, 2, 3)
+    assert v3.model_params == {"temperature": 0, "max_tokens": 10}
 
 
-def test_get_without_version_returns_active_v2(kit):
-    assert kit.get("ticket_classifier").version == 2
+def test_get_without_version_returns_active_v3(kit):
+    assert kit.get("ticket_classifier").version == 3
 
 
 def test_get_specific_version_even_if_inactive(kit):

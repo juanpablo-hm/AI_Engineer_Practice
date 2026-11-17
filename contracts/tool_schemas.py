@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from contracts.structured_output import sanitize_schema
+from tools.proveedores import consultar_proveedor
 from tools.tickets import buscar_ticket
 
 
@@ -49,8 +50,20 @@ BUSCAR_TICKET = ToolSpec(
     handler=buscar_ticket,
 )
 
-# TODO(clase-3): crea ConsultarProveedorArgs y CONSULTAR_PROVEEDOR.
-# 1. Un modelo Pydantic con el argumento que necesita la herramienta.
-# 2. Una descripción que diga qué hace, cuándo usarla y cuándo NO.
-# 3. Un handler en tools/ que lea data/proveedores.json.
-# 4. Agrégala a TOOLS en main.py junto a BUSCAR_TICKET.
+
+class ConsultarProveedorArgs(BaseModel):
+    provider_name: str = Field(min_length=1)
+
+
+CONSULTAR_PROVEEDOR = ToolSpec(
+    name="consultar_proveedor",
+    description=(
+        "Obtiene servicio, SLA en horas, estado y contacto de un proveedor por su nombre. "
+        "El nombre puede venir del campo proveedor que regresa buscar_ticket. "
+        "Úsalo cuando un usuario pregunta por un proveedor, su SLA o su estado. "
+        "No lo utilices para preguntar por tickets, para eso está buscar_ticket. "
+        "No lo utilices si no conoces el nombre del proveedor. "
+    ),
+    args_model=ConsultarProveedorArgs,
+    handler=consultar_proveedor,
+)

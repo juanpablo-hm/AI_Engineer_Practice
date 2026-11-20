@@ -57,3 +57,8 @@ def test_exhausted_totals_uses_same_rules():
     assert budget.exhausted_totals(0, 100, 0, 0) == "presupuesto"
     assert budget.exhausted_totals(0, 0, 0.01, 0) == "presupuesto"
     assert budget.exhausted_totals(0, 0, 0, 5) == "timeout"
+
+
+def test_no_progress_step():
+    budget = AgentBudget()
+    assert budget.exhausted([step(), step()], elapsed_s=0) == "sin_progreso"

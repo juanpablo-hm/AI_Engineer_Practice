@@ -29,8 +29,13 @@ class AgentBudget:
             return "presupuesto"
         if elapsed_s >= self.max_segundos:
             return "timeout"
-        # TODO(clase-4): práctica guiada. Si la misma herramienta se llamó con los mismos
-        # argumentos dos pasos seguidos, regresa "sin_progreso".
+        if len(traza) >= 2:
+            last, second_to_last = traza[-1].paso, traza[-2].paso
+            if (
+                last.herramienta == second_to_last.herramienta
+                and last.argumentos_json == second_to_last.argumentos_json
+            ):
+                return "sin_progreso"
         return None
 
     def exhausted_totals(

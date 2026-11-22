@@ -15,6 +15,7 @@ Uso:
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -116,6 +117,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Con --agent, muestra pensamientos y observaciones completas.",
     )
+    parser.add_argument(
+        "--verify",
+        action="store_true",
+        help="Con --agent, verifica la respuesta contra las observaciones y la corrige una vez",
+    )
     args = parser.parse_args(argv)
     if args.agent and (args.structured or args.tools or args.prompt_name or args.demo):
         parser.error("--agent no se combina con --structured, --tools, --prompt ni --demo.")
@@ -133,6 +139,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--structured y --tools usan su propio prompt: quita --prompt o --demo.")
     if args.tools and (args.prompt is None or args.ticket):
         parser.error('--tools necesita la pregunta como texto, por ejemplo "¿Cómo va el T-1042?".')
+    if args.verify and (args.agent is None):
+        parser.error("--verify requiere un agent")
     return args
 
 
@@ -206,7 +214,7 @@ def describe_action(paso) -> str:
     return " ".join([paso.herramienta or "?", *(str(v) for v in values)]).strip()
 
 
-def run_agent(client: LLMClient, kind: str, question: str, verbose: bool) -> int:
+def run_agent(client: LLMClient, kind: str, question: str, verbose: bool, verified: bool) -> int:
     from agents import PlanAndExecute, ReActAgent
 
     actions: list[str] = []
@@ -230,6 +238,29 @@ def run_agent(client: LLMClient, kind: str, question: str, verbose: bool) -> int
     agent_cls = ReActAgent if kind == "react" else PlanAndExecute
     result = agent_cls(client, TOOLS, on_event=on_event).run(question)
 
+    problems = False
+    if verified and result.respuesta:
+        from agents.verifier import revise, verify
+
+        with client.track() as uso:
+            verificacion = verify(client, question, result)
+
+            if not verificacion.aprobada:
+                corregida = revise(client, question, result, verificacion)
+                result = dataclasses.replace(result, respuesta=corregida)
+                verificacion = verify(client, question, result)
+
+                if not verificacion.aprobada:
+                    print(f"Aviso: {verificacion.problemas}", file=sys.stderr)
+                    problems = True
+                else:
+                    print("corregida ✓")
+
+        print(
+            f"{GRAY}verificador: {uso.calls} llamadas · "
+            f"{uso.tokens:,} tokens · ${uso.cost_usd:.6f}{RESET}"
+        )
+
     if actions:
         print("   ".join(actions))
     if result.respuesta:
@@ -240,6 +271,9 @@ def run_agent(client: LLMClient, kind: str, question: str, verbose: bool) -> int
     )
     if result.motivo != "respuesta":
         print(f"Aviso: {STOP_MESSAGES[result.motivo]}", file=sys.stderr)
+        return 2
+
+    if problems:
         return 2
     return 0
 
@@ -320,7 +354,7 @@ def main(argv: list[str] | None = None) -> int:
         return fail(str(e))
 
     if args.agent:
-        return run_agent(client, args.agent, text, args.verbose)
+        return run_agent(client, args.agent, text, args.verbose, args.verify)
 
     if args.structured or args.tools:
         try:

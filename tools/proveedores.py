@@ -1,35 +1,31 @@
-"""Herramienta `consultar_proveedor` sobre data/proveedores.json."""
-
 from __future__ import annotations
 
 import json
+import unicodedata
 from functools import lru_cache
 from pathlib import Path
-from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from contracts.tool_schemas import ConsultarProveedorArgs
+DATA = Path(__file__).resolve().parent.parent / "data" / "proveedores.json"
+CAMPOS = ("nombre", "servicio", "sla_horas", "estado", "contacto")
 
-# Ruta fija: nunca se construye a partir de los argumentos del modelo.
-PROVEEDORES_DB = Path(__file__).resolve().parents[1] / "data" / "proveedores.json"
+
+def _norm(texto: str) -> str:
+    sin_acentos = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return sin_acentos.lower().strip()
 
 
 @lru_cache(maxsize=1)
-def _proveedores() -> dict[str, dict]:
-    proveedores = json.loads(PROVEEDORES_DB.read_text(encoding="utf-8"))
-    return {proveedor["nombre"].lower(): proveedor for proveedor in proveedores}
+def _catalogo() -> dict[str, dict]:
+    data = json.loads(DATA.read_text(encoding="utf-8"))
+    items = data if isinstance(data, list) else data["proveedores"]
+    return {_norm(p["nombre"]): p for p in items}
 
 
-def consultar_proveedor(args: ConsultarProveedorArgs) -> dict:
-    """Consulta nombre, servicio, estado y contacto de un proveedor"""
-    proveedor = _proveedores().get(args.provider_name.lower().strip())
+def consultar_proveedor(args) -> dict:
+    proveedor = _catalogo().get(_norm(args.nombre))
     if proveedor is None:
-        return {"error": f"Proveedor {args.provider_name} no existe"}
-    return {
-        "nombre": proveedor["nombre"],
-        "servicio": proveedor["servicio"],
-        "sla_horas": proveedor["sla_horas"],
-        "estado": proveedor["estado"],
-        "contacto": proveedor["contacto"],
-        "contratos_vigentes": proveedor["contratos_vigentes"],
-    }
+        return {
+            "error": f"proveedor {args.nombre} no existe",
+            "disponibles": sorted(p["nombre"] for p in _catalogo().values()),
+        }
+    return {k: proveedor[k] for k in CAMPOS if k in proveedor}

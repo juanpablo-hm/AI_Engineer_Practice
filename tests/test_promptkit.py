@@ -57,6 +57,18 @@ def test_get_without_version_returns_active_v3(kit):
     assert kit.get("ticket_classifier").version == 3
 
 
+def test_operator_assistant_keeps_old_system_prompt(kit):
+    messages = kit.get("operator_assistant").render(question="¿Cómo va el T-1042?")
+    assert messages == [
+        {
+            "role": "system",
+            "content": "Eres un asistente de operaciones de una empresa mediana. "
+            "Responde siempre en español, de forma clara y en máximo 3 oraciones.",
+        },
+        {"role": "user", "content": "¿Cómo va el T-1042?"},
+    ]
+
+
 def test_get_specific_version_even_if_inactive(kit):
     assert kit.get("ticket_classifier", 1).version == 1
 

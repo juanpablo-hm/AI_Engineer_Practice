@@ -17,7 +17,6 @@ Uso:
 from __future__ import annotations
 
 import argparse
-import dataclasses
 import json
 import sys
 from pathlib import Path
@@ -235,7 +234,7 @@ def run_agent(
     rol: str = "operador",
     verified: bool = False,
 ) -> int:
-    from agents import PlanAndExecute, ReActAgent
+    from agents import PlanAndExecute, ReActAgent, verify_and_revise
     from agents.tools import ToolRunner
     from contracts.tool_schemas import ACTUALIZAR_ESTADO
 
@@ -272,42 +271,37 @@ def run_agent(
         print(f"{GRAY}herramientas: locales · rol {rol}{RESET}")
         result = agent_cls(client, tools, on_event=on_event, runner=runner).run(question)
 
-    problems = False
-    if verified and result.respuesta:
-        from agents.verifier import revise, verify
-
-        with client.track() as uso:
-            verificacion = verify(client, question, result)
-
-            if not verificacion.aprobada:
-                corregida = revise(client, question, result, verificacion)
-                result = dataclasses.replace(result, respuesta=corregida)
-                verificacion = verify(client, question, result)
-
-                if not verificacion.aprobada:
-                    print(f"Aviso: {verificacion.problemas}", file=sys.stderr)
-                    problems = True
-                else:
-                    print("corregida ✓")
-
-        print(
-            f"{GRAY}verificador: {uso.calls} llamadas · "
-            f"{uso.tokens:,} tokens · ${uso.cost_usd:.6f}{RESET}"
-        )
+    respuesta, checked = result.respuesta, None
+    llamadas, tokens, cost_usd = result.llamadas, result.tokens, result.cost_usd
+    if verified and respuesta:
+        with client.track() as extra:
+            checked = verify_and_revise(client, question, respuesta, result.traza)
+        respuesta = checked.respuesta
+        llamadas += extra.calls
+        tokens += extra.tokens
+        cost_usd += extra.cost_usd
 
     if actions:
         print("   ".join(actions))
-    if result.respuesta:
-        print(result.respuesta.strip())
+    if checked:
+        if not checked.corregida:
+            print(f"{GRAY}verificación: aprobada{RESET}")
+        elif checked.verificacion.aprobada:
+            print(f"{GRAY}verificación: corregida √{RESET}")
+        else:
+            print(f"Aviso: {checked.verificacion.problemas}", file=sys.stderr)
+    if respuesta:
+        print(respuesta.strip())
+
     print(
-        f"{GRAY}motivo: {result.motivo} · {result.llamadas} llamadas · "
-        f"{result.tokens:,} tokens · ${result.cost_usd:.6f}{RESET}"
+        f"{GRAY}motivo: {result.motivo} · {llamadas} llamadas · "
+        f"{tokens:,} tokens · ${cost_usd:.6f}{RESET}"
     )
     if result.motivo != "respuesta":
         print(f"Aviso: {STOP_MESSAGES[result.motivo]}", file=sys.stderr)
         return 2
 
-    if problems:
+    if checked and checked.verificacion.problemas:
         return 2
     return 0
 

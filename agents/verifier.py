@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field, model_validator
 
-from agents.react_agent import format_observation
+from agents.react_agent import COMPANY, PROMPTS_DIR, format_observation
 from contracts.structured_output import generate_structured
 from prompting import PromptKit
 
-PROMPTS_DIR = Path(__file__).resolve().parents[1] / "prompts"
-COMPANY = "Acme Operaciones"
-
 if TYPE_CHECKING:
-    from agents.trace import AgentResult, TraceStep
+    from agents.trace import TraceStep
     from core.llm_client import LLMClient
 
 
@@ -36,20 +33,32 @@ class Verification(BaseModel):
         return self
 
 
+@dataclass(frozen=True)
+class VerifiedAnswer:
+    respuesta: str
+    verificacion: Verification
+    corregida: bool
+
+
 def _observaciones(traza: list[TraceStep]) -> str:
+    if not traza:
+        return "(el agente no usó herramientas)"
     textos = []
-    for n, paso in enumerate(traza, start=1):
-        textos.append(f"{n} {format_observation(paso.observacion)}")
+    for n, step in enumerate(traza, start=1):
+        textos.append(
+            f"{n} {step.paso.herramienta} {step.paso.argumentos_json or '{}'} -> "
+            f"{format_observation(step.observacion)}"
+        )
     return "\n".join(textos)
 
 
-def verify(client: LLMClient, pregunta: str, resultado: AgentResult) -> Verification:
+def _verify(client: LLMClient, pregunta: str, respuesta: str, observaciones: str) -> Verification:
     prompt = PromptKit(PROMPTS_DIR).get("verifier")
     messages = prompt.render(
         company=COMPANY,
         pregunta=pregunta,
-        respuesta=resultado.respuesta,
-        observaciones=_observaciones(resultado.traza),
+        respuesta=respuesta,
+        observaciones=observaciones,
     )
     log_extra = {
         "prompt_name": prompt.name,
@@ -60,20 +69,30 @@ def verify(client: LLMClient, pregunta: str, resultado: AgentResult) -> Verifica
     )
 
 
-def revise(
-    client: LLMClient, pregunta: str, resultado: AgentResult, verificacion: Verification
-) -> str:
-    prompt = PromptKit(PROMPTS_DIR).get("reviser")
-    messages = prompt.render(
+def verify_and_revise(
+    client: LLMClient, pregunta: str, respuesta: str, traza: list[TraceStep]
+) -> VerifiedAnswer:
+    observaciones = _observaciones(traza)
+    verificacion = _verify(client, pregunta, respuesta, observaciones)
+    if verificacion.aprobada:
+        return VerifiedAnswer(respuesta, verificacion, corregida=False)
+
+    reviser = PromptKit(PROMPTS_DIR).get("reviser")
+    messages = reviser.render(
         company=COMPANY,
         pregunta=pregunta,
-        respuesta=resultado.respuesta,
-        observaciones=_observaciones(resultado.traza),
+        respuesta=respuesta,
+        observaciones=observaciones,
         problemas=verificacion.problemas,
     )
-    log_extra = {
-        "prompt_name": prompt.name,
-        "prompt_version": prompt.version,
-    }
+    corregida = client.generate(
+        messages,
+        log_extra={
+            "prompt_name": reviser.name,
+            "prompt_version": reviser.version,
+        },
+        **reviser.model_params,
+    ).text.strip()
 
-    return client.generate(messages, log_extra=log_extra, **prompt.model_params).text
+    verificacion = _verify(client, pregunta, corregida, observaciones)
+    return VerifiedAnswer(corregida, verificacion, corregida=True)

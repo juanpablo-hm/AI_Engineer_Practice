@@ -26,6 +26,7 @@ from pydantic import ValidationError
 from contracts import (
     BUSCAR_TICKET,
     CONSULTAR_PROVEEDOR,
+    CREAR_TICKET,
     MaxIterationsError,
     StructuredOutputError,
     TicketClassification,
@@ -266,7 +267,7 @@ def run_agent(
             result = agent_cls(client, toolset.tools(), on_event=on_event).run(question)
     else:
         # El agente puede proponer actualizar_estado; el ToolRunner decide según el rol.
-        extras = [ACTUALIZAR_ESTADO, LISTAR_TICKETS_POR_PROVEEDOR]
+        extras = [ACTUALIZAR_ESTADO, LISTAR_TICKETS_POR_PROVEEDOR, CREAR_TICKET]
         tools = [*TOOLS, *(tool for tool in extras if tool not in TOOLS)]
         runner = ToolRunner(tools, rol=rol, log_path=TOOL_LOG_PATH)
         print(f"{GRAY}herramientas: locales · rol {rol}{RESET}")

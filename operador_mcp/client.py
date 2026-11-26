@@ -15,6 +15,7 @@ import json
 import os
 import sys
 import threading
+import uuid
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
@@ -79,12 +80,19 @@ class MCPToolset:
         *,
         rol: str = "lectura",
         timeout_s: float = DEFAULT_TIMEOUT_S,
+        request_id: str | None = None,
         server_log: Path | None = SERVER_LOG,
     ) -> None:
         self.command = command or sys.executable
         self.args = args if args is not None else ["-m", "operador_mcp.server"]
+        self.request_id = request_id or uuid.uuid4().hex
         # El hijo no hereda el entorno por defecto (el SDK solo pasa PATH, HOME, ...).
-        self.env = {**os.environ, **(env or {}), "OPERADOR_ROL": rol}
+        self.env = {
+            **os.environ,
+            **(env or {}),
+            "OPERADOR_REQUEST_ID": self.request_id,
+            "OPERADOR_ROL": rol,
+        }
         self.timeout_s = timeout_s
         self.server_log = server_log
         self._tools: list[Tool] = []

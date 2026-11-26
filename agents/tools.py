@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import uuid
 from collections import Counter
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -48,6 +49,7 @@ POLITICAS: dict[str, ToolPolicy] = {
     # Si la base no tiene consultar_proveedor, esta política simplemente no se usa.
     "consultar_proveedor": ToolPolicy("lectura", timeout_s=2),
     "listar_tickets_por_proveedor": ToolPolicy("lectura", timeout_s=2),
+    "crear_ticket": ToolPolicy("escritura", idempotente=True),
 }
 ROLES: dict[Rol, set[Permiso]] = {"lectura": {"lectura"}, "operador": {"lectura", "escritura"}}
 
@@ -86,6 +88,7 @@ class ToolRunner:
         sleep: Callable[[float], None] = time.sleep,
         retries: int = 2,
         log_path: Path | str | None = None,
+        request_id: str | None = None,
     ) -> None:
         self.tools = {tool.name: tool for tool in tools}
         self.rol = rol
@@ -95,6 +98,7 @@ class ToolRunner:
         self.log_path = Path(log_path) if log_path else None
         self.eventos: list[dict] = []  # Lo que se registró, en orden (útil en tests).
         self._llamadas: Counter[str] = Counter()
+        self.request_id = request_id or uuid.uuid4().hex
 
     def politica(self, name: str) -> ToolPolicy:
         return self.politicas.get(name, SIN_POLITICA)
@@ -178,17 +182,17 @@ class ToolRunner:
                 result = tool_error("permanente", f"La herramienta {name} falló")
                 return self._record(name, result, intentos)
 
-    @staticmethod
-    def _with_timeout(spec: ToolSpec, args: BaseModel, timeout_s: float) -> dict:
+    def _with_timeout(self, spec: ToolSpec, args: BaseModel, timeout_s: float) -> dict:
         """Ejecuta el handler en un hilo y espera máximo `timeout_s`.
 
         Python no puede matar un hilo: si se vence el tiempo, el handler sigue corriendo
         en segundo plano hasta terminar; solo dejamos de esperarlo. Por eso el timeout no
         sustituye a que el handler tenga sus propios límites (por ejemplo, en httpx).
         """
+        kwargs = {"request_id": self.request_id} if spec.needs_request_id else {}
         pool = ThreadPoolExecutor(max_workers=1)
         try:
-            return pool.submit(spec.handler, args).result(timeout=timeout_s)
+            return pool.submit(spec.handler, args, **kwargs).result(timeout=timeout_s)
         finally:
             pool.shutdown(wait=False)
 

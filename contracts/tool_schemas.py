@@ -10,10 +10,16 @@ from pydantic import BaseModel, Field
 
 from contracts.structured_output import sanitize_schema
 from tools.proveedores import consultar_proveedor
-from tools.tickets import actualizar_estado, buscar_ticket, listar_tickets_por_proveedor
+from tools.tickets import (
+    actualizar_estado,
+    buscar_ticket,
+    crear_ticket,
+    listar_tickets_por_proveedor,
+)
 
 ErrorTipo = Literal["validacion", "negocio", "transitorio", "permanente", "permiso", "limite"]
 EstadoTicket = Literal["abierto", "en revisión", "esperando proveedor", "resuelto"]
+Prioridad = Literal["baja", "media", "alta"]
 
 
 def tool_error(
@@ -39,7 +45,8 @@ class ToolSpec:
     name: str
     description: str
     args_model: type[BaseModel]
-    handler: Callable[[BaseModel], dict]
+    handler: Callable[..., dict]
+    needs_request_id: bool = False
 
     def to_openai(self) -> dict:
         """Definición de la herramienta en el formato `tools` de la API compatible con OpenAI.
@@ -75,6 +82,16 @@ class ConsultarProveedorArgs(BaseModel):
 
 class ListarTicketsPorProveedorArgs(BaseModel):
     nombre: str = Field(min_length=2, description="Nombre del proveedor, por ejemplo PagosRed")
+
+
+class CrearTicketArgs(BaseModel):
+    asunto: str = Field(
+        min_length=5, max_length=120, description="Asunto del ticket, por ejemplo 'Falla en Pagos'"
+    )
+    descripcion: str = Field(
+        min_length=10, description="Descripción a más detalle del problema reportado"
+    )
+    prioridad: Prioridad
 
 
 BUSCAR_TICKET = ToolSpec(
@@ -123,4 +140,18 @@ LISTAR_TICKETS_POR_PROVEEDOR = ToolSpec(
     ),
     args_model=ListarTicketsPorProveedorArgs,
     handler=listar_tickets_por_proveedor,
+)
+
+CREAR_TICKET = ToolSpec(
+    name="crear_ticket",
+    description=(
+        "Crea un nuevo ticket con asunto, descripción y prioridad. "
+        "Úsalo solo si el usuario pide crear o levantar un ticket. "
+        "Si tiene el mismo asunto y descripción no se crea un ticket, "
+        "regresa duplicado_evitado = true. "
+        "Regresa ID al crear un ticket nuevo. "
+    ),
+    args_model=CrearTicketArgs,
+    needs_request_id=True,
+    handler=crear_ticket,
 )

@@ -25,3 +25,8 @@ logs/*.log
 # Estado local de las herramientas (se conserva var/.gitkeep)
 var/*.json
 var/*.tmp
+.mcp-inspector/
+
+# RAG: índice vectorial y caché de embeddings (Clase 6)
+.chroma/
+.cache/

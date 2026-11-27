@@ -5,8 +5,8 @@ from contracts.ticket import TicketClassification
 from contracts.tool_loop import MAX_ITERS, MaxIterationsError, execute_tool, run_tool_loop
 from contracts.tool_schemas import (
     BUSCAR_TICKET,
-    CREAR_TICKET,
     CONSULTAR_PROVEEDOR,
+    CREAR_TICKET,
     BuscarTicketArgs,
     ConsultarProveedorArgs,
     ToolSpec,
